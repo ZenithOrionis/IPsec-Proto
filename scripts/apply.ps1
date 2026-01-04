@@ -24,19 +24,28 @@ param (
     [Parameter(Mandatory = $true)]
     [string]$PresharedKey,
 
-    [Parameter(Mandatory = $true)]
     [ValidateSet("Tunnel", "Transport")]
-    [string]$Mode
+    [string]$Mode = "Tunnel", # Tunnel or Transport
+
+    [string]$ConnectionName = "Default",
+    [string]$Protocol = "Any",
+    [string]$LocalPort = "Any",
+    [string]$RemotePort = "Any",
+    
+    # Crypto Params (Defaults to Suite B-ish)
+    [string]$Encryption = "AES256",
+    [string]$Hash = "SHA256",
+    [string]$DHGroup = "DH14"
 )
 
 $ErrorActionPreference = "Stop"
 
-# Constants
-$GroupName = "UnifiedIPsecAgent"
-$MMCryptoSetName = "UnifiedIPsecAgent-MM-Crypto"
-$QMCryptoSetName = "UnifiedIPsecAgent-QM-Crypto"
-$RuleName = "UnifiedIPsecAgent-Rule"
-$Phase1AuthName = "UnifiedIPsecAgent-P1Auth"
+# Naming Conventions based on ConnectionName
+$GroupName = "UnifiedIPsecAgent" # Keep Group same for bulk cleanup
+$MMCryptoSetName = "UnifiedIPsecAgent-MM-$ConnectionName"
+$QMCryptoSetName = "UnifiedIPsecAgent-QM-$ConnectionName"
+$RuleName = "UnifiedIPsecAgent-Rule-$ConnectionName"
+$Phase1AuthName = "UnifiedIPsecAgent-P1Auth-$ConnectionName"
 
 Write-Host "Starting IPsec Policy Application..."
 
@@ -59,22 +68,20 @@ try {
     Write-Host "Creating Main Mode Crypto Set..."
     $mmSet = New-NetIPsecMainModeCryptoSet -DisplayName $MMCryptoSetName `
         -Group $GroupName `
-        -Proposal (New-NetIPsecMainModeCryptoProposal -Encryption AES256 -Hash SHA256 -KeyExchange DH14) `
-        -PassThru
-
-    # 3. Create Quick Mode Crypto Set (ESP, AES256, SHA256)
+        -Proposal (New-NetIPsecMainModeCryptoProposal -Encryption $Encryption -Hash $Hash -KeyExchange $DHGroup)
+    
+    # Note: QuickMode/Phase2 usually matches or is negotiated. 
+    # For now, we reuse the same encryption/hash for QM if applicable, or default to ESP-AES256-SHA256
     Write-Host "Creating Quick Mode Crypto Set..."
     $qmSet = New-NetIPsecQuickModeCryptoSet -DisplayName $QMCryptoSetName `
         -Group $GroupName `
-        -Proposal (New-NetIPsecQuickModeCryptoProposal -Encapsulation ESP -ESPCrypto AES256 -ESPHash SHA256) `
-        -PassThru
+        -Proposal (New-NetIPsecQuickModeCryptoProposal -Encapsulation ESP -Encryption $Encryption -ESPHash $Hash)
 
     # 4. Create Phase 1 Auth Set (PSK)
     Write-Host "Creating Phase 1 Auth Set..."
     $p1Auth = New-NetIPsecPhase1AuthSet -DisplayName $Phase1AuthName `
         -Group $GroupName `
-        -Proposal (New-NetIPsecPhase1AuthProposal -MachineMethod PreSharedKey -PreSharedKey $PresharedKey) `
-        -PassThru
+        -Proposal (New-NetIPsecAuthProposal -Machine -PreSharedKey $PresharedKey)
 
     # 5. Create IPsec Rule
     Write-Host "Creating IPsec Rule ($Mode Mode)..."
@@ -84,6 +91,9 @@ try {
         Group              = $GroupName
         LocalAddress       = $LocalSubnet
         RemoteAddress      = $RemoteSubnet
+        Protocol           = $Protocol
+        LocalPort          = $LocalPort
+        RemotePort         = $RemotePort
         Phase1AuthSet      = $p1Auth.Name
         MainModeCryptoSet  = $mmSet.Name
         QuickModeCryptoSet = $qmSet.Name

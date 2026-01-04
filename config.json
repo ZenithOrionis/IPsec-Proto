@@ -1,20 +1,30 @@
 {
-    "mode": "tunnel",
-    "ike_version": "ikev2",
-    "auth": {
-        "type": "psk",
-        "value": "SuperSecretKey123!"
-    },
-    "encryption": {
-        "ike": "aes256-sha256",
-        "esp": "aes256-sha256"
-    },
-    "traffic": {
-        "local_subnet": "10.0.0.0/24",
-        "remote_subnet": "192.168.1.0/24"
-    },
-    "lifetime": {
-        "sa_minutes": 60
-    },
+    "connections": [
+        {
+            "name": "SiteA",
+            "mode": "transport",
+            "ike_version": "ikev2",
+            "auth": {
+                "type": "psk",
+                "value": "SuperSecretKey123!"
+            },
+            "encryption": {
+                "ike": "aes256-sha256",
+                "esp": "aes256-sha256"
+            },
+            "local_subnets": [
+                "10.0.0.0/24"
+            ],
+            "remote_subnets": [
+                "192.168.1.0/24"
+            ],
+            "protocol": "tcp",
+            "local_port": "80",
+            "remote_port": "any",
+            "lifetime": {
+                "sa_minutes": 60
+            }
+        }
+    ],
     "logging": "info"
 }

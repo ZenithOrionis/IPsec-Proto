@@ -12,7 +12,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
-from agent.core import IPsecAgent
+from agent.core import IPsecAgent, AgentState
 
 class IPsecService(win32serviceutil.ServiceFramework):
     _svc_name_ = "UnifiedIPsecAgent"
@@ -30,11 +30,6 @@ class IPsecService(win32serviceutil.ServiceFramework):
         win32event.SetEvent(self.stop_event)
         self.running = False
         if self.agent:
-            # We can't easily interrupt the agent loop nicely if it's sleeping,
-            # but the service restart logic will kill eventually.
-            # In a real app we'd signal the agent.
-            # agent.py doesn't have a check for external stop signal other than KeyboardInterrupt (which is main thread-ish).
-            # We rely on process termination or improved signaling.
             pass
 
     def SvcDoRun(self):
@@ -53,15 +48,6 @@ class IPsecService(win32serviceutil.ServiceFramework):
             self.agent = IPsecAgent(str(config_path))
             
             # Run the agent logic.
-            # Note: agent.run() matches a while loop. We need to adapt it to check stop_event.
-            # We will override the run loop here or modify Agent to accept a stop callback?
-            # Easiest: modifying Agent to respect a stop flag is cleaner. 
-            # But since we can't easily change the Agent class now without re-writing, 
-            # let's run the Agent's logic step-by-step or just wrapping it?
-            # Actually, `agent.run()` loops forever.
-            # We should probably run the agent in a thread or modified loop.
-            # Let's use a simple approach: The Service triggers the agent steps.
-            
             self.agent.load_configuration()
             self.agent.apply_policy()
             
@@ -77,15 +63,10 @@ class IPsecService(win32serviceutil.ServiceFramework):
                     current_status = self.agent.check_status()
                     
                     if current_status == "CONNECTED":
-                        if self.agent.state != "CONNECTED": # Using string comparison or Enum? Enum.
-                             # Need to access Enum from agent
-                             # self.agent.state is an Enum.
-                             pass # Logging is handled inside agent helper if we used it, but we are external now.
-                             # Actually agent.run() handles logic nicely.
-                             # If we call `agent.check_status()` and `agent.apply_policy()`, we duplicate logic.
-                             # Better: Modify agent to be serviceable? 
-                             # Or just run the check every N seconds using WaitForSingleObject timeout.
-                             pass
+                        if self.agent.state != AgentState.CONNECTED:
+                            # State transition logging handled by agent logic if driven by agent.run()
+                            # Here we are manually checking.
+                            pass
                     
                     if current_status == "DISCONNECTED":
                          # Re-apply
